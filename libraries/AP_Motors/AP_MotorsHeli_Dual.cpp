@@ -114,7 +114,7 @@ const AP_Param::GroupInfo AP_MotorsHeli_Dual::var_info[] = {
     // @Description: Feed-forward compensation to automatically add yaw input when differential collective pitch is applied.
     // @Range: -10 10
     // @Increment: 0.1
-    AP_GROUPINFO("DCP_YAW", 11, AP_MotorsHeli_Dual, _dcp_yaw_effect, 0),
+    AP_GROUPINFO("DCP_YAW", 11, AP_MotorsHeli_Dual, _dcp_yaw_effect, -1.0f),
 
     // @Param: YAW_SCALER
     // @DisplayName: Scaler for yaw mixing
@@ -303,15 +303,6 @@ void AP_MotorsHeli_Dual::calculate_scalars()
 void AP_MotorsHeli_Dual::calculate_roll_pitch_collective_factors()
 {
     if (_dual_mode == AP_MOTORS_HELI_DUAL_MODE_TRANSVERSE) {
-        // roll factors
-        _rollFactor[CH_1] = _dcp_scaler;
-        _rollFactor[CH_2] = _dcp_scaler;
-        _rollFactor[CH_3] = _dcp_scaler;
-
-        _rollFactor[CH_4] = -_dcp_scaler;
-        _rollFactor[CH_5] = -_dcp_scaler;
-        _rollFactor[CH_6] = -_dcp_scaler;
-
         // pitch factors
         _pitchFactor[CH_1] = cosf(radians(_servo1_pos - _swash1_phase_angle));
         _pitchFactor[CH_2] = cosf(radians(_servo2_pos - _swash1_phase_angle));
@@ -322,23 +313,14 @@ void AP_MotorsHeli_Dual::calculate_roll_pitch_collective_factors()
         _pitchFactor[CH_6] = cosf(radians(_servo6_pos - _swash2_phase_angle));
 
         // yaw factors
-        _yawFactor[CH_1] = cosf(radians(_servo1_pos + 180 - _swash1_phase_angle)) * _yaw_scaler;
-        _yawFactor[CH_2] = cosf(radians(_servo2_pos + 180 - _swash1_phase_angle)) * _yaw_scaler;
-        _yawFactor[CH_3] = cosf(radians(_servo3_pos + 180 - _swash1_phase_angle)) * _yaw_scaler;
+        _yawFactor[CH_1] = (_yaw_scaler * _dcp_scaler) - cosf(radians(_servo1_pos - _swash1_phase_angle)) *_yaw_scaler * (1.0 - _dcp_scaler);
+        _yawFactor[CH_2] = (_yaw_scaler * _dcp_scaler) - cosf(radians(_servo2_pos - _swash1_phase_angle)) *_yaw_scaler * (1.0 - _dcp_scaler);
+        _yawFactor[CH_3] = (_yaw_scaler * _dcp_scaler) - cosf(radians(_servo3_pos - _swash1_phase_angle)) *_yaw_scaler * (1.0 - _dcp_scaler);
 
-        _yawFactor[CH_4] = cosf(radians(_servo4_pos - _swash2_phase_angle)) * _yaw_scaler;
-        _yawFactor[CH_5] = cosf(radians(_servo5_pos - _swash2_phase_angle)) * _yaw_scaler;
-        _yawFactor[CH_6] = cosf(radians(_servo6_pos - _swash2_phase_angle)) * _yaw_scaler;
+        _yawFactor[CH_4] = cosf(radians(_servo4_pos - _swash2_phase_angle)) * _yaw_scaler * (1.0 - _dcp_scaler) - (_yaw_scaler * _dcp_scaler);
+        _yawFactor[CH_5] = cosf(radians(_servo5_pos - _swash2_phase_angle)) * _yaw_scaler * (1.0 - _dcp_scaler) - (_yaw_scaler * _dcp_scaler);
+        _yawFactor[CH_6] = cosf(radians(_servo6_pos - _swash2_phase_angle)) * _yaw_scaler * (1.0 - _dcp_scaler) - (_yaw_scaler * _dcp_scaler);
     } else { // AP_MOTORS_HELI_DUAL_MODE_TANDEM
-        // roll factors
-        _rollFactor[CH_1] = cosf(radians(_servo1_pos + 90 - _swash1_phase_angle));
-        _rollFactor[CH_2] = cosf(radians(_servo2_pos + 90 - _swash1_phase_angle));
-        _rollFactor[CH_3] = cosf(radians(_servo3_pos + 90 - _swash1_phase_angle));
-
-        _rollFactor[CH_4] = cosf(radians(_servo4_pos + 90 - _swash2_phase_angle));
-        _rollFactor[CH_5] = cosf(radians(_servo5_pos + 90 - _swash2_phase_angle));
-        _rollFactor[CH_6] = cosf(radians(_servo6_pos + 90 - _swash2_phase_angle));
-
         // pitch factors
         _pitchFactor[CH_1] = _dcp_scaler;
         _pitchFactor[CH_2] = _dcp_scaler;
@@ -357,6 +339,14 @@ void AP_MotorsHeli_Dual::calculate_roll_pitch_collective_factors()
         _yawFactor[CH_5] = cosf(radians(_servo5_pos + 270 - _swash2_phase_angle)) * _yaw_scaler;
         _yawFactor[CH_6] = cosf(radians(_servo6_pos + 270 - _swash2_phase_angle)) * _yaw_scaler;
     }
+    // roll factors
+    _rollFactor[CH_1] = cosf(radians(_servo1_pos + 90 - _swash1_phase_angle));
+    _rollFactor[CH_2] = cosf(radians(_servo2_pos + 90 - _swash1_phase_angle));
+    _rollFactor[CH_3] = cosf(radians(_servo3_pos + 90 - _swash1_phase_angle));
+
+    _rollFactor[CH_4] = cosf(radians(_servo4_pos + 90 - _swash2_phase_angle));
+    _rollFactor[CH_5] = cosf(radians(_servo5_pos + 90 - _swash2_phase_angle));
+    _rollFactor[CH_6] = cosf(radians(_servo6_pos + 90 - _swash2_phase_angle));
 
     // collective factors
     _collectiveFactor[CH_1] = 1;
@@ -415,6 +405,16 @@ void AP_MotorsHeli_Dual::move_actuators(float roll_out, float pitch_out, float c
     limit.throttle_lower = false;
     limit.throttle_upper = false;
 
+    if (roll_out < -_cyclic_max/4500.0f) {
+        roll_out = -_cyclic_max/4500.0f;
+        limit.roll_pitch = true;
+    }
+
+    if (roll_out > _cyclic_max/4500.0f) {
+        roll_out = _cyclic_max/4500.0f;
+        limit.roll_pitch = true;
+    }
+
     if (_dual_mode == AP_MOTORS_HELI_DUAL_MODE_TRANSVERSE) {
         if (pitch_out < -_cyclic_max/4500.0f) {
             pitch_out = -_cyclic_max/4500.0f;
@@ -425,43 +425,10 @@ void AP_MotorsHeli_Dual::move_actuators(float roll_out, float pitch_out, float c
             pitch_out = _cyclic_max/4500.0f;
             limit.roll_pitch = true;
         }
-    } else {
-        if (roll_out < -_cyclic_max/4500.0f) {
-            roll_out = -_cyclic_max/4500.0f;
-            limit.roll_pitch = true;
-        }
 
-        if (roll_out > _cyclic_max/4500.0f) {
-            roll_out = _cyclic_max/4500.0f;
-            limit.roll_pitch = true;
-        }
-    }
 
     if (_heliflags.inverted_flight) {
         collective_in = 1 - collective_in;
-    }
-
-    float yaw_compensation = 0.0f;
-
-    // if servo output not in manual mode, process pre-compensation factors
-    if (_servo_mode == SERVO_CONTROL_MODE_AUTOMATED) {
-        // add differential collective pitch yaw compensation
-        if (_dual_mode == AP_MOTORS_HELI_DUAL_MODE_TRANSVERSE) {
-            yaw_compensation = _dcp_yaw_effect * roll_out;
-        } else { // AP_MOTORS_HELI_DUAL_MODE_TANDEM
-            yaw_compensation = _dcp_yaw_effect * pitch_out;
-        }
-        yaw_out = yaw_out + yaw_compensation;
-    }
-
-    // scale yaw and update limits
-    if (yaw_out < -_cyclic_max/4500.0f) {
-        yaw_out = -_cyclic_max/4500.0f;
-        limit.yaw = true;
-    }
-    if (yaw_out > _cyclic_max/4500.0f) {
-        yaw_out = _cyclic_max/4500.0f;
-        limit.yaw = true;
     }
 
     // constrain collective input
@@ -499,6 +466,35 @@ void AP_MotorsHeli_Dual::move_actuators(float roll_out, float pitch_out, float c
     if (_collective_direction == AP_MOTORS_HELI_DUAL_COLLECTIVE_DIRECTION_REVERSED){
         collective_out_scaled = 1 - collective_out_scaled;
         collective2_out_scaled = 1 - collective2_out_scaled;
+    }
+
+    float yaw_compensation = 0.0f;
+
+    // if servo output not in manual mode, process pre-compensation factors
+    if (_dual_mode == AP_MOTORS_HELI_DUAL_MODE_TANDEM) {
+        // add differential collective pitch yaw compensation
+        if(_servo_mode == SERVO_CONTROL_MODE_AUTOMATED) {
+            yaw_compensation = _dcp_yaw_effect * pitch_out;
+            yaw_out = yaw_out + yaw_compensation;
+        }
+    }
+    else { //_dual_mode == AP_MOTORS_HELI_DUAL_MODE_TRANSVERSE
+        // reverse yaw in negative collective and scale down yaw near zero collective
+        if (_dcp_yaw_effect > 0.0f) {
+            yaw_compensation = 1.0f - (2.0f / (1.0f + powf(2.71828f , _dcp_yaw_effect * (collective_out-_collective_mid_pct)) ) );
+            // yaw_compensation = (-1,1) S-shaped curve (Logistic Regression) 1/(1 + e^kt)
+            yaw_out *= yaw_compensation;
+        }
+    }
+
+    // scale yaw and update limits
+    if (yaw_out < -_cyclic_max/4500.0f) {
+        yaw_out = -_cyclic_max/4500.0f;
+        limit.yaw = true;
+    }
+    if (yaw_out > _cyclic_max/4500.0f) {
+        yaw_out = _cyclic_max/4500.0f;
+        limit.yaw = true;
     }
 
     // feed power estimate into main rotor controller
