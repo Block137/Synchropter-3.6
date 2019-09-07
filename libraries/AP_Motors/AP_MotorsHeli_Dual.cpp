@@ -425,6 +425,7 @@ void AP_MotorsHeli_Dual::move_actuators(float roll_out, float pitch_out, float c
             pitch_out = _cyclic_max/4500.0f;
             limit.roll_pitch = true;
         }
+    }
 
 
     if (_heliflags.inverted_flight) {
